@@ -45,7 +45,7 @@ commands = {
 def start(message):
     user_id = message.from_user.id
     if user_id in allowed_users:
-        bot.send_message(user_id, "🦊 Гра почалась!
+        bot.send_message(user_id, """🦊 Гра почалась!
 
 "
                                   "Ти пишеш слова на своєму тілі.
@@ -55,7 +55,7 @@ def start(message):
                                   "Що знайде — вводить сюди, в бот.
 
 "
-                                  "Foxie відповість… бажанням 😈")
+                                  "Foxie відповість… бажанням 😈""")
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         btn1 = types.KeyboardButton("🛍 Купити собі")
