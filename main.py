@@ -3,16 +3,15 @@ from telebot import types
 import time
 from datetime import datetime
 
-# ====== Налаштування ======
 TOKEN = "8023087340:AAFRPkovu5PK9pBFVbFmo402NaahGuMaLsc"
 ADMIN_ID = 572069105
 bot = telebot.TeleBot(TOKEN)
 
 # ====== Глобальні змінні ======
 ALLOWED_USERS = set()
-USER_STATE = {}  # user_id: dict із станом (рівень, введені команди, дата)
-GIFT_CODES = {}  # {код: {"used": False, "for_id": None, "from_id": None}}
-USERS_DB = {}    # user_id: {"level1": done, "level2": done, "joined": date, ...}
+USER_STATE = {}
+GIFT_CODES = {}
+USERS_DB = {}
 
 # ====== Пасхалки ======
 EASTER_EGGS = {
@@ -31,16 +30,13 @@ EASTER_EGGS = {
     "мрія": "Це гра — або твоя мрія стала реальністю?",
 }
 
-# ====== Нагадування ======
 REMINDER_TEXTS = [
     "А пам’ятаєш, як це було вперше? 🦊 Може, повторимо? Foxie все ще тут…",
     "3 місяці без пригод? Foxie трохи сумує. Хочеш зіграти знову?",
     "Деякі речі варто повторювати… з новим настроєм. Foxie на тебе чекає 😈",
     "А може, вже час для нового рівня? Foxie не забуває своїх лисичок 🦊"
 ]
-UNSUBSCRIBE_TEXT = "Foxie більше не буде турбувати 🦊 Але ти завжди можеш повернутись у гру, просто написавши сюди 💌"
 
-# ====== Сценарії гри ======
 COMMANDS_LIST = {
     "1": {
         "words": {
@@ -54,7 +50,7 @@ COMMANDS_LIST = {
             "moon": "Торкнись тільки носом. Веди лінію повільно. Губам — заборонено.",
             "kiss": "Три поцілунки. Там, де я не чекаю. Тільки не на губах.",
             "hot": "Зроби гарячіше. Ти маєш три рухи — і жодного слова.",
-            "fire": "Знімі щось із мене. Скажи: “Моє”. І притисни мене ближче.",
+            "fire": "Зніми щось із мене. Скажи: “Моє”. І притисни мене ближче.",
             "love": "Покажи мені, де ти зберігаєш ніжність. Не словом — жестом.",
             "yes": "Скажи «так» на вухо. І зроби те, на що б я ніколи не наважилась (ся).",
             "secret": "Прошепчи мені щось, що я ще не знаю. Навіть якщо це фантазія.",
@@ -104,11 +100,58 @@ COMMANDS_LIST = {
     }
 }
 
-# ========== Старт/Вітальний екран ==========
+# ========== МЕНЮ ==========
 def get_main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("🔸 Що це за гра?", "💳 Купити", "🎁 Подарувати іншому", "🟠 Почати гру")
     return markup
+
+def back_menu():
+    return types.ReplyKeyboardMarkup(resize_keyboard=True).add("⬅️ Назад", "⬅️ Головне меню")
+
+def shop_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🧡 Купити Digital", "🔥 Купити Lite Box")
+    markup.add("⬅️ Назад", "⬅️ Головне меню")
+    return markup
+
+def gift_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🎁 Подарувати Digital — 500 грн", "🎁 Подарувати Lite Box — 800 грн")
+    markup.add("⬅️ Назад", "⬅️ Головне меню")
+    return markup
+
+def level_choose_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🟠 Рівень 1 (Original)", "🟣 Рівень 2 (Passion)")
+    markup.add("⬅️ Назад", "⬅️ Головне меню")
+    return markup
+
+def game_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🧡 Список команд для напису")
+    markup.add("⬅️ Назад", "⬅️ Головне меню")
+    return markup
+
+def after_game_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🔁 Почати знову", "📩 Поділитися з другом")
+    markup.add("⬅️ Головне меню")
+    return markup
+
+# ========== ЛОГІКА КНОПОК НАЗАД ==========
+def handle_back(message):
+    state = USER_STATE.get(message.from_user.id, {}).get("step", "")
+    if state in ["about", "shop", "gift_choice"]:
+        start(message)
+    elif state.startswith("playing_") or state == "choose_level":
+        send_level_choose(message.from_user.id)
+    elif state == "wait_gift_for":
+        present_gift(message)
+    else:
+        start(message)
+
+# ========== ОСНОВНІ ХЕНДЛЕРИ ==========
 
 @bot.message_handler(commands=["start"])
 def start(message):
@@ -123,7 +166,14 @@ def start(message):
     bot.send_message(user_id, text, reply_markup=get_main_menu())
     USER_STATE[user_id] = {"step": "main_menu"}
 
-# === Блок: Що це за гра ===
+@bot.message_handler(func=lambda m: m.text == "⬅️ Головне меню")
+def to_main(message):
+    start(message)
+
+@bot.message_handler(func=lambda m: m.text == "⬅️ Назад")
+def to_back(message):
+    handle_back(message)
+
 @bot.message_handler(func=lambda m: m.text == "🔸 Що це за гра?")
 def what_is_game(message):
     text = (
@@ -134,24 +184,9 @@ def what_is_game(message):
         "Є 20 команд. Але кожна з них — про вас. Про дотик, дію, мовчання. І бажання.\n\n"
         "Навіть якщо у вас тільки ручка й фантазія — гра вже почалась."
     )
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🧡 Хочу грати", "⬅️ Назад", "⬅️ Головне меню")
-    bot.send_message(message.chat.id, text, reply_markup=markup)
+    bot.send_message(message.chat.id, text, reply_markup=back_menu())
     USER_STATE[message.from_user.id]["step"] = "about"
 
-@bot.message_handler(func=lambda m: m.text == "🧡 Хочу грати")
-def go_to_buy(message):
-    show_shop(message)
-
-@bot.message_handler(func=lambda m: m.text == "⬅️ Назад")
-def go_back_main(message):
-    start(message)
-
-@bot.message_handler(func=lambda m: m.text == "⬅️ Головне меню")
-def back_to_main(message):
-    start(message)
-
-# === Блок: Купити ===
 @bot.message_handler(func=lambda m: m.text == "💳 Купити")
 def show_shop(message):
     text = (
@@ -161,17 +196,45 @@ def show_shop(message):
         "Доступ до гри відкриється одразу після оплати.\n\n"
         "🎁 Хочеш подарувати гру іншій людині?"
     )
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🧡 Купити Digital", "🔥 Купити Lite Box", "⬅️ Головне меню")
-    bot.send_message(message.chat.id, text, reply_markup=markup)
+    bot.send_message(message.chat.id, text, reply_markup=shop_menu())
     USER_STATE[message.from_user.id]["step"] = "shop"
+
+@bot.message_handler(func=lambda m: m.text == "🎁 Подарувати іншому")
+def present_gift(message):
+    bot.send_message(message.chat.id, 
+        "Foxie Code — це ще й незвичний подарунок 💌 Гра, яка залишається в пам’яті.\n"
+        "Обери, який варіант ти хочеш подарувати:",
+        reply_markup=gift_menu())
+    USER_STATE[message.from_user.id]["step"] = "gift_choice"
+
+@bot.message_handler(func=lambda m: m.text in [
+    "🎁 Подарувати Digital — 500 грн", "🎁 Подарувати Lite Box — 800 грн"])
+def buy_gift(message):
+    bot.send_message(message.chat.id, 
+        "Напиши, будь ласка, для кого цей подарунок (нік або номер телефону):", 
+        reply_markup=back_menu())
+    USER_STATE[message.from_user.id]["step"] = "wait_gift_for"
+
+@bot.message_handler(func=lambda m: USER_STATE.get(m.from_user.id, {}).get("step") == "wait_gift_for")
+def get_gift_for(message):
+    user_id = message.from_user.id
+    gift_code = f"fox{user_id}{int(time.time())%10000}"
+    GIFT_CODES[gift_code] = {"used": False, "for_id": None, "from_id": user_id}
+    bot.send_message(user_id,
+        f"Привіт! Тобі подарували гру Foxie Code.\n"
+        f"Просто зайди в бот і введи цей код:\n❤️{gift_code}\nFoxie чекає на тебе!\n(Код можна використати лише один раз.)",
+        reply_markup=get_main_menu()
+    )
+    start(message)
 
 @bot.message_handler(func=lambda m: m.text == "🧡 Купити Digital")
 def buy_digital(message):
     user_id = message.from_user.id
     ALLOWED_USERS.add(user_id)
-USERS_DB[user_id]["level2"] = False
-    bot.send_message(user_id, "Дякуємо за оплату 🧡\nТвоя ніч — починається просто зараз.")
+    USERS_DB[user_id]["level1"] = False
+    USERS_DB[user_id]["level2"] = False
+    bot.send_message(user_id, "Дякуємо за оплату 🧡\nТвоя ніч — починається просто зараз.",
+                     reply_markup=level_choose_menu())
     send_level_choose(user_id)
 
 @bot.message_handler(func=lambda m: m.text == "🔥 Купити Lite Box")
@@ -180,57 +243,13 @@ def buy_lite_box(message):
     ALLOWED_USERS.add(user_id)
     USERS_DB[user_id]["level1"] = False
     USERS_DB[user_id]["level2"] = False
-    bot.send_message(
-        user_id,
-        "Дякуємо за оплату! Тепер твоя гра Foxie Code активована.\n\n"
-        "Для Lite Box напиши: ПІБ, телефон, місто та відділення Нової Пошти.",
-    )
-    send_level_choose(user_id)
-
-# === Блок: Подарувати іншому ===
-@bot.message_handler(func=lambda m: m.text == "🎁 Подарувати іншому")
-def present_gift(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🎁 Подарувати Digital — 500 грн", "🎁 Подарувати Lite Box — 800 грн", "⬅️ Головне меню")
-    bot.send_message(
-        message.chat.id,
-        "Foxie Code — це ще й незвичний подарунок 💌 Гра, яка залишається в пам’яті.\nОбери, який варіант ти хочеш подарувати:",
-        reply_markup=markup,
-    )
-    USER_STATE[message.from_user.id]["step"] = "gift_choice"
-
-@bot.message_handler(func=lambda m: m.text in ["🎁 Подарувати Digital — 500 грн", "🎁 Подарувати Lite Box — 800 грн"])
-def buy_gift(message):
-    bot.send_message(
-        message.chat.id, "Напиши, будь ласка, для кого цей подарунок (нік або номер телефону):"
-    )
-    USER_STATE[message.from_user.id]["step"] = "wait_gift_for"
-
-@bot.message_handler(func=lambda m: USER_STATE.get(m.from_user.id, {}).get("step") == "wait_gift_for")
-def get_gift_for(message):
-    user_id = message.from_user.id
-    gift_code = f"fox{user_id}{int(time.time())%10000}"
-    GIFT_CODES[gift_code] = {"used": False, "for_id": None, "from_id": user_id}
-    bot.send_message(
-        user_id,
-        f"Привіт! Тобі подарували гру Foxie Code.\n"
-        f"Просто зайди в бот і введи цей код:\n❤️{gift_code}\nFoxie чекає на тебе!\n(Код можна використати лише один раз.)",
-    )
-    start(message)
-
-# === Блок: Почати гру ===
-@bot.message_handler(func=lambda m: m.text == "🟠 Почати гру")
-def try_start_game(message):
-    user_id = message.from_user.id
-    if user_id not in ALLOWED_USERS:
-        bot.send_message(user_id, "Це закрита гра. Спершу купи доступ або активуй подарунковий код ❤️")
-        return
+    bot.send_message(user_id, 
+        "Дякуємо за оплату! Тепер твоя гра Foxie Code активована.\n\nДля Lite Box напиши: ПІБ, телефон, місто та відділення Нової Пошти.",
+        reply_markup=level_choose_menu())
     send_level_choose(user_id)
 
 def send_level_choose(user_id):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🟠 Рівень 1 (Original)", "🟣 Рівень 2 (Passion)", "⬅️ Головне меню")
-    bot.send_message(user_id, "Обери рівень гри:", reply_markup=markup)
+    bot.send_message(user_id, "Обери рівень гри:", reply_markup=level_choose_menu())
     USER_STATE[user_id]["step"] = "choose_level"
 
 @bot.message_handler(func=lambda m: m.text in ["🟠 Рівень 1 (Original)", "🟣 Рівень 2 (Passion)"])
@@ -244,65 +263,59 @@ def choose_level(message):
         "Гра почалась 🦊\n\n"
         "Один із вас — пише команди на тілі.\nДругий — шукає. І коли знаходить — вводить слово сюди, в бот.\n"
         "Foxie відповість… бажанням 😈\n\n"
-        "Можеш у будь-який момент натиснути 🧡 Список команд для напису або ⬅️ Головне меню!"
+        "Можеш у будь-який момент натиснути 🧡 Список команд для напису, ⬅️ Назад або ⬅️ Головне меню!"
     )
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🧡 Список команд для напису", "⬅️ Головне меню")
-    bot.send_message(user_id, text, reply_markup=markup)
+    bot.send_message(user_id, text, reply_markup=game_menu())
 
-# === Список команд ===
 @bot.message_handler(func=lambda m: m.text == "🧡 Список команд для напису")
 def show_commands(message):
     user_id = message.from_user.id
     level = USER_STATE.get(user_id, {}).get("level", "1")
     block = COMMANDS_LIST[level]
     lines = [f"• {cmd} — {place}" for cmd, place in block["words"].items()]
-    bot.send_message(
-        user_id, "Ось твій список із 20 команд 🧡\n\n" + "\n".join(lines)
-    )
+    bot.send_message(user_id, "Ось твій список із 20 команд 🧡\n\n" + "\n".join(lines), reply_markup=game_menu())
 
-# === Гра: Обробка команд ===
 @bot.message_handler(func=lambda m: USER_STATE.get(m.from_user.id, {}).get("step", "").startswith("playing_"))
 def process_game(message):
     user_id = message.from_user.id
-    # Перевіряємо чи не головне меню
-    if message.text == "⬅️ Головне меню":
-        start(message)
-        return
-    if message.text == "🧡 Список команд для напису":
-        show_commands(message)
-        return
     level = USER_STATE[user_id]["level"]
     cmds = COMMANDS_LIST[level]["words"]
     replies = COMMANDS_LIST[level]["replies"]
     input_word = message.text.strip().lower()
+    # Обробка службових кнопок у грі
+    if message.text == "⬅️ Головне меню":
+        start(message)
+        return
+    if message.text == "⬅️ Назад":
+        send_level_choose(user_id)
+        return
+    if message.text == "🧡 Список команд для напису":
+        show_commands(message)
+        return
     # Пасхалки
     if input_word in EASTER_EGGS:
-        bot.send_message(user_id, EASTER_EGGS[input_word])
+        bot.send_message(user_id, EASTER_EGGS[input_word], reply_markup=game_menu())
         return
-    # Перевірка
+    # Перевірка слова
     if input_word not in cmds:
-        bot.send_message(user_id, "Пфф… Такої команди в мене немає 🦊 Спробуй ще.\n(або повернись ⬅️ Головне меню)")
+        bot.send_message(user_id, "Пфф… Такої команди в мене немає 🦊 Спробуй ще.", reply_markup=game_menu())
         return
     if input_word in USER_STATE[user_id]["commands"]:
-        bot.send_message(user_id, "Це слово вже було. Введи інше 🦊")
+        bot.send_message(user_id, "Це слово вже було. Введи інше 🦊", reply_markup=game_menu())
         return
     USER_STATE[user_id]["commands"].append(input_word)
-    bot.send_message(user_id, replies[input_word])
+    bot.send_message(user_id, replies[input_word], reply_markup=game_menu())
     if len(USER_STATE[user_id]["commands"]) == 20:
         finish_game(user_id, level)
     else:
-        bot.send_message(user_id, "🦊 Чекаю на наступне слово…")
+        bot.send_message(user_id, "🦊 Чекаю на наступне слово…", reply_markup=game_menu())
 
 def finish_game(user_id, level):
     USERS_DB[user_id][f"level{level}"] = True
-    bot.send_message(user_id, "Foxie з вами прощається… до наступної гри 🦊")
+    bot.send_message(user_id, "Foxie з вами прощається… до наступної гри 🦊", reply_markup=after_game_menu())
     time.sleep(2)
-    bot.send_message(user_id, "Це було все... на сьогодні 😉 Але хто знає, може Foxie ще щось придумає...")
-    # Далі: оцінка, порада другу
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🔁 Почати знову", "📩 Поділитися з другом", "⬅️ Головне меню")
-    bot.send_message(user_id, "🔁 Хочеш почати ще раз або порадити Foxie другу?", reply_markup=markup)
+    bot.send_message(user_id, "Це було все... на сьогодні 😉 Але хто знає, може Foxie ще щось придумає...",
+                     reply_markup=after_game_menu())
 
 @bot.message_handler(func=lambda m: m.text == "🔁 Почати знову")
 def restart_game(message):
@@ -310,32 +323,37 @@ def restart_game(message):
 
 @bot.message_handler(func=lambda m: m.text == "📩 Поділитися з другом")
 def share_with_friend(message):
-    bot.send_message(
-        message.chat.id,
+    bot.send_message(message.chat.id,
         "🦊 Хочеш поділитися Foxie з другом?\nНатисни й надішли йому лінк на нашого ботика:\nhttps://t.me/FoxieCodeBot\n"
-        "Але тільки тсс… гра відкриється тільки після оплати або з кодом-подарунком 😉"
+        "Але тільки тсс… гра відкриється тільки після оплати або з кодом-подарунком 😉",
+        reply_markup=after_game_menu()
     )
 
-# === Введення подарункового коду ===
 @bot.message_handler(func=lambda m: m.text and m.text.lower().startswith("fox"))
 def enter_gift_code(message):
     user_id = message.from_user.id
     code = message.text.strip()
     if code not in GIFT_CODES:
-        bot.send_message(user_id, "Код не знайдено або вже використаний.")
+        bot.send_message(user_id, "Код не знайдено або вже використаний.", reply_markup=get_main_menu())
         return
     if GIFT_CODES[code]["used"]:
-        bot.send_message(user_id, "Код вже був використаний. Спробуй інший або купи свою Foxie Code!")
+        bot.send_message(user_id, "Код вже був використаний. Спробуй інший або купи свою Foxie Code!",
+                         reply_markup=get_main_menu())
         return
     ALLOWED_USERS.add(user_id)
     GIFT_CODES[code]["used"] = True
     GIFT_CODES[code]["for_id"] = user_id
-    bot.send_message(user_id, "Код активовано! Foxie Code готова 🔥\nПопереду — 20 команд. Одна за одною, зростаючи в напрузі й бажанні.")
+    bot.send_message(user_id, "Код активовано! Foxie Code готова 🔥\nПопереду — 20 команд. Одна за одною, зростаючи в напрузі й бажанні.",
+                     reply_markup=level_choose_menu())
     send_level_choose(user_id)
 
-# === /id команда (надсилає користувачу його Telegram ID) ===
+@bot.message_handler(func=lambda m: m.text and m.text.strip().lower() in EASTER_EGGS)
+def handle_easter(message):
+    bot.send_message(message.chat.id, EASTER_EGGS[message.text.strip().lower()])
+
+# === /id команда ===
 @bot.message_handler(commands=["id"])
-def get_id(message):
+def show_id(message):
     bot.send_message(message.chat.id, f"Твій Telegram ID: {message.from_user.id}")
 
 # === Адмін-команди ===
@@ -371,11 +389,6 @@ def show_stats(message):
         f"Всього gift-кодів: {len(GIFT_CODES)}"
     )
     bot.send_message(ADMIN_ID, text)
-
-# === Пасхалки (окремо для всіх) ===
-@bot.message_handler(func=lambda m: m.text and m.text.strip().lower() in EASTER_EGGS)
-def handle_easter(message):
-    bot.send_message(message.chat.id, EASTER_EGGS[m.text.strip().lower()])
 
 # === Запуск ===
 if __name__ == "__main__":
