@@ -1,9 +1,10 @@
+import os
 import telebot
 from telebot import types
 import time
 from datetime import datetime
 
-TOKEN = "8023087340:AAE2ypi91JgOqBtvZvCm_bBLVXcriEW-T3M"
+TOKEN = os.environ["BOT_TOKEN"]   # <-- беремо з Environment
 ADMIN_ID = 572069105
 bot = telebot.TeleBot(TOKEN)
 
