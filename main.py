@@ -3,7 +3,7 @@ from telebot import types
 import time
 from datetime import datetime
 
-TOKEN = "8023087340:AAFRPkovu5PK9pBFVbFmo402NaahGuMaLsc"
+TOKEN = "8023087340:AAF8qIAW6CAlJunrAh8YTEoipsPhQoz2QYY"
 ADMIN_ID = 572069105
 bot = telebot.TeleBot(TOKEN)
 
